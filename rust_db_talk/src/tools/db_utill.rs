@@ -8,8 +8,8 @@ impl DbUtill {
     // Get database schema as string
     // ("todolist", ["id", "title", "detail", "is_done", "created_at"])
     // or multiple [("todolist", ["id", "title", "detail", "is_done", "created_at"]), ("project", ["project_id", "name", "description", "deadline"])]
-    pub async fn get_db_info(pool: &SqlitePool) -> Result<Vec<(String, Vec<String>)>, Error> {
-        let mut tables_with_fields = Vec::new();
+    pub async fn get_db_info(pool: &SqlitePool) -> Result<String, Error> {
+        let mut schema_description = String::new();
     
         // Step 1: Get all table names
         let tables = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
@@ -19,42 +19,48 @@ impl DbUtill {
         for table in tables {
             let table_name: String = table.get("name");
     
-            // Step 2: Get all columns for each table
+            schema_description.push_str(&format!("Table \"{}\":\n", table_name));
+    
+            // Step 2: Get all columns for each table (including name and type)
             let pragma_query = format!("PRAGMA table_info('{}')", table_name);
             let columns = sqlx::query(&pragma_query)
                 .fetch_all(pool)
                 .await?;
     
-            let column_names: Vec<String> = columns
-                .iter()
-                .map(|col| col.get::<String, _>("name"))
-                .collect();
+            for col in columns {
+                let column_name: String = col.get("name");
+                let column_type: String = col.get("type");
+                schema_description.push_str(&format!("- {} ({})\n", column_name, column_type));
+            }
     
-            tables_with_fields.push((table_name, column_names));
+            schema_description.push('\n');
         }
     
-        Ok(tables_with_fields)
+        Ok(schema_description)
     }
 
     pub async fn get_database_query(pool: &SqlitePool, sql_query: String) -> Result<String, Error> {
         // Step 1: Execute the SQL query
         let result = sqlx::query(&sql_query)
-            .fetch_all(pool)
+            .fetch_all(pool)  // Use fetch_all to handle multiple rows if needed
             .await;
     
         // Handle potential errors and return a custom error message
         match result {
             Ok(rows) => {
-                // Step 2: Format the results as a string
+                // Step 2: Format the results dynamically
                 let mut formatted_result = String::new();
     
                 for row in rows {
-                    let columns = row.columns();
                     let mut row_data = Vec::new();
     
-                    for column in columns {
-                        let value: Option<String> = row.try_get(column.name()).ok(); // Use `try_get` for error handling
-                        row_data.push(value.unwrap_or_else(|| "NULL".to_string()));
+                    for (i, column) in row.columns().iter().enumerate() {
+                        // Dynamically handle any column in the row
+                        let value: Option<String> = row.try_get(i).ok(); // Get the column value
+                        let value_str = value.unwrap_or_else(|| "NULL".to_string()); // Handle missing values
+    
+                        println!("Column: {}, Value: {}", column.name(), value_str); // Log values
+                        row_data.push(value_str);
                     }
     
                     // Join column values and add to the result string
@@ -64,23 +70,36 @@ impl DbUtill {
     
                 Ok(formatted_result)
             },
-            Err(_) => {
-                // Return a custom error message if the query execution fails
-                Ok("nothing to display bec can exec sql command".to_string())
+            Err(e) => {
+                Err(anyhow::anyhow!("Database query failed: {}", e).into()) // Improved error handling
             }
         }
     }
 
     pub fn extract_sql(response: &str) -> String {
-        if let Some(start) = response.find("```sql") {
-            if let Some(end) = response[start + 6..].find("```") {
-                // Extract the SQL portion and trim excess whitespace
-                return response[start + 6..start + 6 + end].trim().to_string();
-            }
-        }
+        let trimmed = response.trim();
     
-        // Fallback: if no ```sql found, return the whole response after trimming
-        response.trim().to_string()
+        let sql_start = trimmed.find("SELECT")
+            .or_else(|| trimmed.find("INSERT"))
+            .or_else(|| trimmed.find("UPDATE"))
+            .or_else(|| trimmed.find("DELETE"));
+    
+        if let Some(start) = sql_start {
+            let after_start = &trimmed[start..];
+            if let Some(response_pos) = after_start.find("Response :") {
+                after_start[..response_pos]
+                    .trim()
+                    .trim_end_matches(';')
+                    .to_string()
+            } else {
+                after_start
+                    .trim()
+                    .trim_end_matches(';')
+                    .to_string()
+            }
+        } else {
+            trimmed.to_string()
+        }
     }
     
 

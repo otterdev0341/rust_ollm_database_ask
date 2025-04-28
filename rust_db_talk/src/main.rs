@@ -13,6 +13,6 @@ async fn main() {
     .await
     .unwrap();
 
-  println!("Response : {}", output);
+  println!("{}",output);
 
 }

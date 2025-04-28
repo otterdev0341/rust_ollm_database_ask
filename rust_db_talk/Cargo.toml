@@ -1,0 +1,12 @@
+[package]
+name = "rust_db_talk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+async-trait = "0.1.88"
+dotenv = "0.14.1"
+ollama-rs = "0.3.0"
+sqlx ={ version = "0.8.5", features = ["sqlite", "runtime-async-std", "runtime-tokio"]}
+tokio = {version = "1.44.2", features = ["full"]}

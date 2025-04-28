@@ -40,37 +40,49 @@ impl DbUtill {
         // Step 1: Execute the SQL query
         let result = sqlx::query(&sql_query)
             .fetch_all(pool)
-            .await?;
+            .await;
     
-        // Step 2: Format the results as a string
-        let mut formatted_result = String::new();
+        // Handle potential errors and return a custom error message
+        match result {
+            Ok(rows) => {
+                // Step 2: Format the results as a string
+                let mut formatted_result = String::new();
     
-        for row in result {
-            let columns = row.columns();
-            let mut row_data = Vec::new();
+                for row in rows {
+                    let columns = row.columns();
+                    let mut row_data = Vec::new();
     
-            for column in columns {
-                let value: Option<String> = row.try_get(column.name()).ok(); // Use `try_get` for error handling
-                row_data.push(value.unwrap_or_else(|| "NULL".to_string()));
+                    for column in columns {
+                        let value: Option<String> = row.try_get(column.name()).ok(); // Use `try_get` for error handling
+                        row_data.push(value.unwrap_or_else(|| "NULL".to_string()));
+                    }
+    
+                    // Join column values and add to the result string
+                    formatted_result.push_str(&row_data.join(", "));
+                    formatted_result.push_str("\n");
+                }
+    
+                Ok(formatted_result)
+            },
+            Err(_) => {
+                // Return a custom error message if the query execution fails
+                Ok("nothing to display bec can exec sql command".to_string())
             }
-    
-            // Join column values and add to the result string
-            formatted_result.push_str(&row_data.join(", "));
-            formatted_result.push_str("\n");
         }
-    
-        Ok(formatted_result)
     }
 
     pub fn extract_sql(response: &str) -> String {
         if let Some(start) = response.find("```sql") {
-            if let Some(end) = response[start+6..].find("```") {
-                return response[start+6..start+6+end].trim().to_string();
+            if let Some(end) = response[start + 6..].find("```") {
+                // Extract the SQL portion and trim excess whitespace
+                return response[start + 6..start + 6 + end].trim().to_string();
             }
         }
-        // fallback: if no ```sql found, return whole response
-        response.to_string()
+    
+        // Fallback: if no ```sql found, return the whole response after trimming
+        response.trim().to_string()
     }
+    
 
 }
 
